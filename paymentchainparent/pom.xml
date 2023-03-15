@@ -59,6 +59,7 @@
         <postgres.version>42.5.0</postgres.version>
         <java-validation.version>2.0.1.Final</java-validation.version>
         <dockerfile-maven-version>1.4.13</dockerfile-maven-version>
+        <spring-boot-maven-plugin.version>2.3.4.RELEASE</spring-boot-maven-plugin.version>
     </properties>
 
     <dependencyManagement>

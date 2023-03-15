@@ -6,7 +6,9 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
+        <module name="eurekaserver" />
         <module name="product" />
+        <module name="adminserver" />
         <module name="transaction" />
         <module name="customer" />
       </profile>
@@ -14,6 +16,7 @@
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="adminserver" options="-parameters" />
       <module name="customer" options="" />
       <module name="product" options="" />
     </option>

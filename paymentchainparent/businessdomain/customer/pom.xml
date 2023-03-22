@@ -17,6 +17,13 @@
 	<name>customer</name>
 	<description>Demo project for Spring Boot</description>
 
+	<dependencies>
+		<dependency>
+			<groupId>org.yaml</groupId>
+			<artifactId>snakeyaml</artifactId>
+			<version>1.27</version>
+		</dependency>
+	</dependencies>
 	<build>
 		<plugins>
 			<plugin>

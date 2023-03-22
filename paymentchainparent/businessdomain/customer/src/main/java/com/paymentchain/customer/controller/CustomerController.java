@@ -1,25 +1,23 @@
 package com.paymentchain.customer.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.paymentchain.customer.business.transactions.BussinesTransaction;
 import com.paymentchain.customer.entities.Customer;
-import com.paymentchain.customer.entities.CustomerProduct;
+import com.paymentchain.customer.exception.BussinesRuleException;
 import com.paymentchain.customer.repository.CustomerRepository;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.epoll.EpollChannelOption;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.handler.timeout.WriteTimeoutHandler;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
 
+import java.net.UnknownHostException;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -29,14 +27,19 @@ import java.util.concurrent.TimeUnit;
 public class CustomerController {
 
     CustomerRepository customerRepository;
+    BussinesTransaction bussinesTransaction;
 
     private final WebClient.Builder webClientBuilder;
 
     @Autowired
-    public CustomerController(CustomerRepository customerRepository, WebClient.Builder webClientBuilder) {
+    public CustomerController(CustomerRepository customerRepository, WebClient.Builder webClientBuilder, BussinesTransaction bussinesTransaction) {
         this.customerRepository = customerRepository;
         this.webClientBuilder = webClientBuilder;
+        this.bussinesTransaction = bussinesTransaction;
     }
+
+    @Value("${user.role}")
+    private String role;
 
     //webClient requires HttpClient library to work propertly
     HttpClient client = HttpClient.create()
@@ -55,21 +58,26 @@ public class CustomerController {
             });
 
     @GetMapping
-    public List<Customer> findAll() {
-        return  this.customerRepository.findAll();
+    public ResponseEntity<List<Customer>> findAll() {
+        System.out.print("el role es : " +role);
+        List<Customer> customers = this.customerRepository.findAll();
+        if(CollectionUtils.isEmpty(customers)){
+            return ResponseEntity.noContent().build();
+        }
+        return  ResponseEntity.ok(customers);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<Customer> findById(@PathVariable long id) {
-        Customer customer = this.customerRepository.findById(id).get();
-        return ResponseEntity.ok(customer);
+        return this.customerRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<Customer>  save(@RequestBody Customer customer) {
-        customer.getProducts().forEach(x -> x.setCustomer(customer));
-        Customer newCustomer = this.customerRepository.save(customer);
-        return ResponseEntity.ok(newCustomer);
+    public ResponseEntity<Customer>  save(@RequestBody Customer customer) throws UnknownHostException, BussinesRuleException {
+        Customer newCustomer = this.bussinesTransaction.save(customer);
+        return new ResponseEntity<>(newCustomer, HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
@@ -84,60 +92,13 @@ public class CustomerController {
         if(customer.isPresent()) {
             this.customerRepository.delete(customer.get());
         }
-
-
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/full")
     public Customer getCustomerByCode(@RequestParam String code) {
-        Customer customer = this.customerRepository.findByCode(code);
-        List<CustomerProduct> customerProducts = customer.getProducts();
-        if(customerProducts != null) {
-            customerProducts.forEach(x -> {
-                String productName = getProductName(x.getProductId());
-                x.setProductName(productName);
-            });
-        }
-        //find all transactions that belong this account number
-        List<?> transactions = getTransactions(customer.getIban());
-        customer.setTransactions(transactions);
-
+        Customer customer = this.bussinesTransaction.get(code);
         return customer;
-    }
-
-    private String getProductName(long id) {
-        WebClient build = webClientBuilder.clientConnector(new ReactorClientHttpConnector(client))
-                .baseUrl("http://businessdomain-product/product")
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .defaultUriVariables(Collections.singletonMap("url", "http://businessdomain-product/product"))
-                .build();
-        JsonNode block = build.method(HttpMethod.GET).uri("/" + id)
-                .retrieve().bodyToMono(JsonNode.class).block();
-        String name = block.get("name").asText();
-        return name;
-    }
-
-    /**
-     * Call Transaction Microservice and Find all transaction that belong to the account give
-     * @param iban account number of the customer
-     * @return All transaction that belong this account
-     */
-    private  List<?> getTransactions(String  iban) {
-        WebClient build = webClientBuilder.clientConnector(new ReactorClientHttpConnector(client))
-                .baseUrl("http://businessdomain-transaction/transaction")
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .build();
-
-
-        List<?> transactions = build.method(HttpMethod.GET).uri(uriBuilder -> uriBuilder
-                        .path("/customer/transactions")
-                        .queryParam("ibanAccount", iban)
-                        .build())
-                .retrieve().bodyToFlux(Object.class).collectList().block();
-
-
-        return transactions;
     }
 
 }
